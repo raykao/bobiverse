@@ -1,0 +1,25 @@
+# Active project work (each project is its own git repo)
+workbench/
+
+# Beads task tracking (workspace-local state)
+.beads/
+
+# Environment secrets
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor state
+.vscode/settings.json
+.idea/
+
+# WAL files (if using SQLite)
+*.db-shm
+*.db-wal
+
+# Backup artifacts
+bak/
+*.bak

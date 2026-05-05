@@ -132,6 +132,103 @@ store_memory(
 
 ---
 
+## Workspace Isolation (Critical)
+
+Beads databases are **not shared** between agents. Every memory operation is scoped to the agent's OWN workspace.
+
+> `<WORKSPACE>` throughout this document means the absolute path to THIS agent's workspace root:
+> `~/.copilot-bridge/workspaces/<this-agent-name>/`
+>
+> Never substitute another agent's name or path. If unsure, verify: `echo $BEADS_DIR` must end with `<this-agent-name>/.beads`. If it does not, stop and fix the environment before writing any memories.
+
+| Resource | Location | Scope |
+|----------|----------|-------|
+| Beads database | `<WORKSPACE>/.beads/` | This agent only |
+| Handoff state file | `<WORKSPACE>/.handoff-state.md` | This agent only |
+| Working files / clones | `<WORKSPACE>/workbench/` | This agent only |
+| `BEADS_ACTOR` env var | set to this agent's name | This agent only |
+
+**Worktree/clone gotcha**: Repos cloned into `<WORKSPACE>/workbench/` may contain their own `.github/hooks/` with hardcoded paths pointing to a different agent's workspace. Those hooks belong to those repos and are not used by the bridge for this agent's sessions. Do NOT copy them as a template for this agent's own hooks -- always start from `<WORKSPACE>/.github/hooks/`.
+
+---
+
+## Session Lifecycle
+
+The `sessionStart` hook (`<WORKSPACE>/.github/hooks/session-start.sh`) runs automatically and:
+
+1. Sets `BEADS_DIR` to `<WORKSPACE>/.beads`
+2. Sets `BEADS_ACTOR` to this agent's name
+3. Runs `bd prime` to start the Dolt server
+4. Generates `<WORKSPACE>/.handoff-state.md` from Beads if it does not already exist
+
+You do **not** need to run `bd prime` manually.
+
+**`bd ready --json` is lazy.** Run it only when work context is needed:
+- User asks about open tasks or status
+- You are resuming active work from a previous session
+
+Do NOT run `bd ready --json` at the start of every session - it adds context cost even when the task list is not relevant.
+
+**Session resume** - on the first interaction of every new session:
+
+1. Check for `<WORKSPACE>/.handoff-state.md` (written by the previous session's `sessionEnd` hook).
+2. If it exists, present a brief summary of active work and ask what to focus on.
+3. If it does not exist, respond normally -- no proactive Beads queries.
+
+---
+
+## Session Handoff Protocol
+
+When ending a session that has active work in progress, write a structured handoff entry using this key pattern:
+
+**Key**: `session-handoff-<agent-name>-<ISO-date>` (e.g., `session-handoff-bob-2026-05-04`)
+
+```bash
+bd remember "session-handoff-<agent-name>-<date>: <one-line what was done>. Next: <one-line what is next>. Branch: <branch-name>. Tasks: <task-IDs or descriptions>."
+```
+
+Remove any previous handoff for the same agent first -- only one active handoff per agent at a time:
+
+```bash
+bd forget session-handoff-<agent-name>-<previous-date>
+bd remember "session-handoff-<agent-name>-<new-date>: ..."
+```
+
+**Dual-write for handoffs**: Also fire `store_memory` with a condensed cold-start summary when the handoff contains information a new session must have before it can search Beads.
+
+---
+
+## Context Window Management
+
+Context usage is reported by the user in the format: `Context: 53k/200k tokens (27%)`
+
+| Zone | Range | Action |
+|------|-------|--------|
+| Green | < 70% | Keep working. No prep needed. |
+| Soft (yellow) | 70-85% | Finish current chunk, `bd remember` workstream state, no new large tool-call chains. |
+| Hard (red) | > 85% | Stop. Save state to Beads now. Prompt user to `/new`. Do not start new work. |
+
+Adjustments:
+- Tool-heavy work (web fetches, large file reads): treat hard threshold as 75% instead of 85%
+- Pure reasoning / chat: can run hotter (~80% soft / 90% hard)
+
+On the first context reading of a session, briefly acknowledge the current zone. Do not over-narrate subsequent readings -- shift behavior silently. If no readings are shared and the session feels long (roughly 30+ tool calls or many large file reads), proactively ask for a reading.
+
+---
+
+## Precise Recall
+
+Use `bd recall <exact-key>` to retrieve a specific memory by its key without a keyword search. Useful when you know the exact key (e.g., a handoff key or a named configuration fact).
+
+```bash
+bd recall session-handoff-bob-2026-05-04   # exact key
+bd memories dashboard                       # keyword search
+```
+
+Do NOT run `bd memories` with no arguments. The full list wastes context. Search for what you need, when you need it.
+
+---
+
 ## Related Modules
 
 - [core.md](core.md) - documentation conventions (memories supplement, not replace, written docs)

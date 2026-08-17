@@ -43,6 +43,14 @@ if command -v replicant &>/dev/null; then
   replicant reconcile --cwd "$REPLICANT_CWD" >/dev/null 2>&1 || true
 fi
 
+# Transparent whole-DB github sync pass: pulls in any GitHub-side changes (issue edits, comments,
+# closures made directly on GitHub) before the session begins. Unconditional - does not depend on
+# any specific bead mutation having enqueued a github_sync op. Best-effort: if replicant is not
+# installed, this is a silent no-op.
+if command -v replicant &>/dev/null; then
+  replicant github sync --cwd "$REPLICANT_CWD" >/dev/null 2>&1 || true
+fi
+
 bd prime >/dev/null 2>&1 || true
 
 # Find the latest session-handoff memory key (lexicographic sort works because keys embed ISO date).

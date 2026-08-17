@@ -41,6 +41,15 @@ if command -v bd &>/dev/null; then
     bd backup sync >/dev/null 2>&1 || true
   fi
 
+  # Transparent whole-DB github sync pass: pushes out any local bead mutations made during this
+  # session. Unconditional - does not depend on any specific bead mutation having enqueued a
+  # github_sync op via `replicant bead create/update/close`; this closes that gap by always
+  # attempting a whole-DB sync regardless of which bd commands were used. Best-effort: if
+  # replicant is not installed, this is a silent no-op (no bare bd fallback exists for this).
+  if command -v replicant &>/dev/null; then
+    replicant github sync --cwd "$REPLICANT_CWD" >/dev/null 2>&1 || true
+  fi
+
   # Additional git-based backup on a dedicated branch in this repository.
   REPO="${WORKSPACE_ROOT}"
   BACKUP_SRC="$BEADS_DIR/backup"
